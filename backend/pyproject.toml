@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llm-gateway"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "supabase>=2.0",
+    "httpx>=0.27",
+    "redis>=5.0",
+    "scikit-learn>=1.4",
+    "scipy>=1.13",
+    "numpy>=1.26",
+    "joblib>=1.4",
+    "bcrypt>=4.1",
+    "tenacity>=8.2",
+    "python-jose[cryptography]>=3.3",
+    "sentry-sdk[fastapi]>=2.0",
+    "structlog>=24.0",
+    "groq>=0.9",
+    "google-generativeai>=0.7",
+    "upstash-qstash>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-httpx>=0.30",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "bandit>=1.7",
+    "httpx>=0.27",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.bandit]
+skips = ["B101"]

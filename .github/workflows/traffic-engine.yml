@@ -1,0 +1,27 @@
+name: traffic-engine
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  drive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install httpx
+
+      - name: Drive traffic
+        env:
+          DEMO_API_KEY: ${{ secrets.DEMO_API_KEY }}
+          API_URL: ${{ secrets.API_URL }}
+          TRAFFIC_BURST_SIZE: 12
+        run: python backend/scripts/drive_traffic.py

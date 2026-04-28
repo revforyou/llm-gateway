@@ -1,0 +1,17 @@
+name: drift-monitor
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run drift check
+        run: |
+          curl -fsS -X POST "${{ secrets.API_URL }}/v1/internal/run-drift" \
+            -H "X-Cron-Secret: ${{ secrets.INTERNAL_CRON_SECRET }}" \
+            -H "Content-Type: application/json" || true
