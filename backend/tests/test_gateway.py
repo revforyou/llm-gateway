@@ -1,5 +1,5 @@
 import pytest
-from app.gateway.classifier import _rule_based_classify
+from app.gateway.classifier import _rule_based_classify, _is_complex
 from app.gateway.router import route
 from app.gateway.pricing import calc_cost
 from decimal import Decimal
@@ -14,14 +14,12 @@ def test_simple_classification():
 
 def test_complex_classification_escalation():
     text = "I want to speak to a manager about the fraud on my account immediately."
-    complexity, score = _rule_based_classify(text)
-    assert complexity == "complex"
+    assert _is_complex(text) is True
 
 
 def test_complex_classification_length():
     text = "x" * 900
-    complexity, _ = _rule_based_classify(text)
-    assert complexity == "complex"
+    assert _is_complex(text) is True
 
 
 def test_medium_classification():

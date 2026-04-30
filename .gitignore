@@ -2,7 +2,6 @@
 .env.local
 .env.*.local
 *.env
-backend/app/gateway/classifier.pkl
 backend/app/gateway/models/*.pkl
 backend/app/gateway/models/*.joblib
 __pycache__/
