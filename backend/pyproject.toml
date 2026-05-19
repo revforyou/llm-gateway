@@ -25,7 +25,6 @@ dependencies = [
     "structlog>=24.0",
     "groq>=0.9",
     "google-generativeai>=0.7",
-    "upstash-qstash>=2.0",
 ]
 
 [project.optional-dependencies]
