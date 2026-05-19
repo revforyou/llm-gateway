@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: llm-gateway
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: ENV
+        value: production
+      - key: APP_BASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: QSTASH_TOKEN
+        sync: false
+      - key: QSTASH_CURRENT_SIGNING_KEY
+        sync: false
+      - key: QSTASH_NEXT_SIGNING_KEY
+        sync: false
+      - key: INTERNAL_CRON_SECRET
+        sync: false
+      - key: ALERT_WEBHOOK_SECRET
+        sync: false
+      - key: EVAL_SAMPLE_RATE
+        value: "0.85"
+      - key: TRAFFIC_BURST_SIZE
+        value: "12"
+      - key: DEMO_TEAM_ID
+        value: "00000000-0000-0000-0000-000000000001"
+      - key: SENTRY_DSN
+        sync: false

@@ -1,3 +1,5 @@
+# fly.toml kept for reference — project deploys to Render instead.
+# See render.yaml in repo root.
 app = "llm-gateway"
 primary_region = "iad"
 
