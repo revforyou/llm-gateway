@@ -1,4 +1,8 @@
-"""Set required env vars before any module-level imports run."""
+"""Set required env vars before any module-level imports run.
+
+Uses os.environ directly (not setdefault) so that empty strings
+passed by CI when secrets are unset get overridden with test values.
+"""
 import os
 
 _DEFAULTS = {
@@ -16,4 +20,6 @@ _DEFAULTS = {
 }
 
 for k, v in _DEFAULTS.items():
-    os.environ.setdefault(k, v)
+    # Override if missing OR empty (CI sets empty string when secret not configured)
+    if not os.environ.get(k):
+        os.environ[k] = v

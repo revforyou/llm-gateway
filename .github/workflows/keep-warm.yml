@@ -9,6 +9,7 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    if: ${{ vars.BACKEND_DEPLOYED == 'true' }}
     steps:
       - name: Ping backend health
         run: curl -fsS "${{ secrets.API_URL }}/health" || true

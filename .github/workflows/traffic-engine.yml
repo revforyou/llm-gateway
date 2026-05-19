@@ -9,6 +9,8 @@ jobs:
   drive:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Only run when backend is deployed and demo key exists
+    if: ${{ vars.BACKEND_DEPLOYED == 'true' }}
     steps:
       - uses: actions/checkout@v4
 

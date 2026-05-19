@@ -55,5 +55,8 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
 [tool.bandit]
 skips = ["B101"]
