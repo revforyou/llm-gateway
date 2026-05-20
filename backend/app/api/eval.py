@@ -11,7 +11,7 @@ from app.models.schemas import ApiResponse
 
 router = APIRouter(prefix="/v1/eval", tags=["eval"])
 
-EVALUATOR_MODEL = "gemini-2.5-flash-lite-preview-06-17"
+EVALUATOR_MODEL = "gemini-2.0-flash"
 
 
 @router.post("/run", response_model=ApiResponse)
