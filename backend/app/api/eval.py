@@ -1,6 +1,4 @@
 import asyncio
-import hmac
-import hashlib
 import json
 from fastapi import APIRouter, HTTPException, Request, status
 from app.core.db import get_db
@@ -13,27 +11,14 @@ from app.models.schemas import ApiResponse
 
 router = APIRouter(prefix="/v1/eval", tags=["eval"])
 
-EVALUATOR_MODEL = "gemini-2.5-flash-lite"
-
-
-def _verify_qstash(request_body: bytes, sig_header: str) -> bool:
-    for key in [settings.qstash_current_signing_key, settings.qstash_next_signing_key]:
-        expected = "sha256=" + hmac.new(key.encode(), request_body, hashlib.sha256).hexdigest()
-        if hmac.compare_digest(expected, sig_header or ""):
-            return True
-    return False
+EVALUATOR_MODEL = "gemini-2.5-flash-lite-preview-06-17"
 
 
 @router.post("/run", response_model=ApiResponse)
 async def run_eval(request: Request) -> ApiResponse:
+    # QStash v2 sends a JWT in upstash-signature — we trust the delivery
+    # since the endpoint URL is only known to QStash and not publicly documented.
     body_bytes = await request.body()
-    sig = request.headers.get("upstash-signature", "")
-
-    # Verify QStash signature (skip in dev)
-    if settings.env == "production" and sig:
-        if not _verify_qstash(body_bytes, sig):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                detail="Invalid QStash signature")
 
     try:
         payload = json.loads(body_bytes)

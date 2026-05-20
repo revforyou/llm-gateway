@@ -6,9 +6,6 @@ from datetime import datetime
 class ChatRequest(BaseModel):
     prompt: str = Field(..., max_length=32768)
     ticket_id: str | None = None
-    stream: bool = False
-
-    model_config = {"str_max_length": 32768}
 
 
 class ChatResponse(BaseModel):
