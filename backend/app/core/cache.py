@@ -7,5 +7,9 @@ _client: redis_lib.Redis | None = None
 def get_redis() -> redis_lib.Redis:
     global _client
     if _client is None:
-        _client = redis_lib.from_url(settings.redis_url, decode_responses=True)
+        _client = redis_lib.from_url(
+            settings.redis_url,
+            decode_responses=True,
+            ssl_cert_reqs=None,  # Upstash uses self-signed certs
+        )
     return _client
