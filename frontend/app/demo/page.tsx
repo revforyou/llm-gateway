@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis,
+  BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
@@ -165,7 +165,7 @@ export default function DemoPage() {
                   <Tooltip />
                   <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                     {distData.map((d, i) => (
-                      <rect key={i} fill={d.fill} />
+                      <Cell key={i} fill={d.fill} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -191,7 +191,7 @@ export default function DemoPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                   <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => [`${v}/100`, "Avg Quality"]} />
+                  <Tooltip formatter={(v) => [`${v}/100`, "Avg Quality"]} />
                   <Line
                     type="monotone"
                     dataKey="avg_quality"
