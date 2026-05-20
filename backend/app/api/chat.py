@@ -3,7 +3,7 @@ import random
 import time
 import asyncio
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.core.auth import verify_api_key_dep
 from app.core.ratelimit import check_rate_limit
 from app.core.db import get_db
@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.gateway.classifier import classify
 from app.gateway.router import route
 from app.gateway import llm_client
+from app.gateway.providers.groq_client import ProviderError
 from app.gateway.pricing import calc_cost
 from app.models.schemas import ChatRequest, ChatResponse, ApiResponse
 
@@ -30,13 +31,16 @@ async def chat(
     complexity, complexity_score = classify(body.prompt)
     config = route(complexity)
 
-    result = await llm_client.complete(
-        provider=config["provider"],
-        model=config["model"],
-        prompt=body.prompt,
-        prompt_version=config.get("prompt_version", "v1_vanilla"),
-        max_tokens=config.get("max_tokens", 512),
-    )
+    try:
+        result = await llm_client.complete(
+            provider=config["provider"],
+            model=config["model"],
+            prompt=body.prompt,
+            prompt_version=config.get("prompt_version", "v1_vanilla"),
+            max_tokens=config.get("max_tokens", 512),
+        )
+    except ProviderError as e:
+        raise HTTPException(status_code=502, detail=f"LLM provider error: {e}")
 
     total_latency_ms = int((time.monotonic() - t_start) * 1000)
     gateway_overhead_ms = total_latency_ms - result.latency_ms
