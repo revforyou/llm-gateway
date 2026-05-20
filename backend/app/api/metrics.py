@@ -79,6 +79,40 @@ async def public_metrics() -> ApiResponse:
         for h, scores in sorted(hourly.items())
     ]
 
+    # Per-model stats from today's requests
+    model_buckets: dict = {}
+    for r in req_rows:
+        m = r["model_used"]
+        if m not in model_buckets:
+            model_buckets[m] = {"count": 0, "total_latency": 0, "total_cost": 0.0}
+        model_buckets[m]["count"] += 1
+        model_buckets[m]["total_latency"] += r["latency_ms"]
+        model_buckets[m]["total_cost"] += float(r["cost_usd"])
+
+    model_stats = {
+        m: {
+            "count": v["count"],
+            "avg_latency_ms": round(v["total_latency"] / v["count"]) if v["count"] else 0,
+            "total_cost_usd": round(v["total_cost"], 6),
+        }
+        for m, v in model_buckets.items()
+    }
+
+    # Estimate savings vs always routing to 70B
+    big_model = "llama-3.3-70b-versatile"
+    big_avg_cost = (
+        model_buckets[big_model]["total_cost"] / model_buckets[big_model]["count"]
+        if big_model in model_buckets and model_buckets[big_model]["count"] > 0
+        else 0.0003
+    )
+    hypothetical_cost = big_avg_cost * total
+    cost_savings_usd = round(max(0.0, hypothetical_cost - total_cost), 6)
+    savings_pct = round((cost_savings_usd / hypothetical_cost * 100) if hypothetical_cost > 0 else 0, 1)
+
+    # Route efficiency
+    cheap_count = complexity_counts.get("simple", 0)
+    cheap_pct = round(cheap_count / max(total, 1) * 100, 1)
+
     # Recent 10 requests
     recent = [
         {
@@ -99,8 +133,12 @@ async def public_metrics() -> ApiResponse:
             "total_cost_usd": round(total_cost, 6),
             "p95_latency_ms": p95,
             "hallucination_rate": hallucination_rate,
+            "cost_savings_usd": cost_savings_usd,
+            "savings_pct": savings_pct,
+            "cheap_route_pct": cheap_pct,
         },
         "complexity_distribution": complexity_counts,
+        "model_stats": model_stats,
         "quality_trend": quality_trend,
         "recent_requests": recent,
     })
