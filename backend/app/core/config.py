@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     alert_webhook_url: str = ""
     alert_webhook_secret: str = ""
 
+    frontend_url: str = "http://localhost:3000"
     sentry_dsn: str = ""
     demo_team_id: str = ""
 

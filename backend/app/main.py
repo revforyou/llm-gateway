@@ -11,7 +11,7 @@ app = FastAPI(title="LLM Gateway", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.app_base_url, "http://localhost:3000"],
+    allow_origins=[settings.frontend_url, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Cron-Secret"],
