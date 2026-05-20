@@ -1045,61 +1045,8 @@ VERCEL_TOKEN=
 7. **Verify keep-warm:** `gh workflow run keep-warm.yml` once. Check it returns 200 from all layers.
 8. **Smoke test:** open `/demo` in incognito → KPIs populate. After 24h, ~570 requests visible.
 
----
 
-## 12. Done = Done Checklist
-
-Before declaring victory, verify ALL of these on the live `/demo`:
-
-- [ ] Dashboard shows ≥ 24 hours of continuous data
-- [ ] Quality score gauge shows ≥ 85
-- [ ] Cost-by-model chart shows ~70/25/5 distribution
-- [ ] "Savings vs single-model baseline" annotation shows ≥ 40%
-- [ ] p95 gateway overhead chart < 500ms
-- [ ] Hallucination flag rate badge: 8-15%
-- [ ] At least one experiment row visible (running or concluded)
-- [ ] If concluded: p<0.05, effect size 5-9, traffic split shifted toward winner
-- [ ] At least one drift event visible (manually trigger if needed)
-- [ ] Audit log per request visible in dashboard's `/responses` detail
-- [ ] Security tests green
-- [ ] `/demo` works in incognito with no login
-- [ ] Loom video embedded; `<2 min` long
-- [ ] `docs/METRICS.md` has SQL queries for every resume number
-- [ ] System has been running ≥ 7 days untouched, no service paused
-
----
-
-## 13. Resume Bullets — Honest Final Form
-
-After everything is live and metrics are real:
-
-> **LLM Quality Gateway — Automated Evaluation & A/B Experimentation** *(Live Demo · GitHub)*
->
-> - Built a multi-tenant LLM observability gateway (FastAPI, Postgres with RLS, Redis, async eval queue) with complexity-based routing across Llama 3.1 8B / 3.3 70B that achieved ~40% cost reduction vs single-large-model baseline at sub-500ms p95 gateway overhead, while maintaining 85+ quality scores measured by LLM-as-judge.
-> - Engineered a stratified sampled async evaluation pipeline scoring responses on accuracy, helpfulness, and tone within 5s, flagging ~12% of responses for hallucination via combined LLM-judge + entity-grounding checks, with full per-tenant audit logging and Postgres RLS isolation.
-> - Designed a statistical A/B experimentation engine (Welch's t-test, p < 0.05, deterministic hash-bucket splitting with mid-experiment traffic shifting) that auto-concluded a +6.8 quality-point improvement of a tuned-prompt variant over a vanilla baseline, validated across hundreds of samples per arm.
-
-> Note: Specific numbers (40%, 85, 12%, 6.8) become exact once the system runs for 5-7 days. Update this section in your resume after the dashboard stabilizes.
-
----
-
-## 14. Pre-Code Checklist (verify before Phase 1)
-
-Claude Code: **STOP and ask the user** if any of these are missing:
-
-- [ ] GitHub repo URL
-- [ ] Supabase project URL + service key + anon key
-- [ ] Upstash Redis connection URL
-- [ ] Upstash QStash token + signing keys (current + next)
-- [ ] Groq API key
-- [ ] Google AI Studio (Gemini) API key
-- [ ] (Optional) Sentry DSN
-
-Do not proceed with placeholders.
-
----
-
-## 15. Behavior Rules for Claude Code
+## 12. Behavior Rules for Claude Code
 
 1. **No shortcuts.** Tests must pass before advancing. Don't skip a phase to save time.
 2. **Parallelize relentlessly.** If user has two terminals, run backend and frontend in parallel. If not, interleave inside each phase.
