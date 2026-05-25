@@ -109,9 +109,10 @@ async def public_metrics() -> ApiResponse:
     cost_savings_usd = round(max(0.0, hypothetical_cost - total_cost), 6)
     savings_pct = round((cost_savings_usd / hypothetical_cost * 100) if hypothetical_cost > 0 else 0, 1)
 
-    # Route efficiency
+    # Route efficiency — use same 7-day window as complexity_counts
+    week_total = sum(complexity_counts.values()) or 1
     cheap_count = complexity_counts.get("simple", 0)
-    cheap_pct = round(cheap_count / max(total, 1) * 100, 1)
+    cheap_pct = round(cheap_count / week_total * 100, 1)
 
     # Recent 10 requests
     recent = [

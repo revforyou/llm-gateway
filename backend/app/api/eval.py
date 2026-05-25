@@ -32,10 +32,10 @@ async def run_eval(request: Request) -> ApiResponse:
         db.table("responses")
         .select("id, request_id, team_id, content")
         .eq("id", response_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not resp_row.data:
+    if not resp_row or not resp_row.data:
         return ApiResponse(data={"skipped": "response not found"})
 
     resp = resp_row.data
@@ -43,10 +43,10 @@ async def run_eval(request: Request) -> ApiResponse:
         db.table("requests")
         .select("prompt, team_id")
         .eq("id", resp["request_id"])
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not req_row.data:
+    if not req_row or not req_row.data:
         return ApiResponse(data={"skipped": "request not found"})
 
     prompt = req_row.data["prompt"]
