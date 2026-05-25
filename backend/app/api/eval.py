@@ -53,7 +53,7 @@ async def run_eval(request: Request) -> ApiResponse:
     response_text = resp["content"]
 
     try:
-        async with asyncio.timeout(5.0):
+        async with asyncio.timeout(25.0):
             judge_result, eval_latency = await judge(prompt, response_text)
             grounding_flag, grounding_issues = check_grounding(prompt, response_text)
             refusal_flag = check_refusal(response_text)

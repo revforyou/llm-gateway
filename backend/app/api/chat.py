@@ -18,6 +18,9 @@ from app.models.schemas import ChatRequest, ChatResponse, ApiResponse
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
+# Keep strong references to background tasks so they aren't garbage collected
+_background_tasks: set = set()
+
 
 @router.post("", response_model=ApiResponse)
 async def chat(
@@ -78,7 +81,9 @@ async def chat(
 
     response_id = resp_row.data[0]["id"]
 
-    asyncio.create_task(_enqueue_eval(response_id))
+    task = asyncio.create_task(_enqueue_eval(response_id))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     log_audit(
         auth["team_id"], auth["key_id"], "chat",
         f"requests/{request_id}",
