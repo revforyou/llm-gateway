@@ -44,6 +44,7 @@ class HealthResponse(BaseModel):
     db: str
     redis: str
     version: str = "0.1.0"
+    classifier: Any = None  # metrics dict when available, None otherwise
 
 
 class MetricsOverview(BaseModel):

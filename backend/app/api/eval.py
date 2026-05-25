@@ -53,9 +53,9 @@ async def run_eval(request: Request) -> ApiResponse:
     response_text = resp["content"]
 
     try:
-        async with asyncio.timeout(25.0):
+        async with asyncio.timeout(35.0):
             judge_result, eval_latency = await judge(prompt, response_text)
-            grounding_flag, grounding_issues = check_grounding(prompt, response_text)
+            grounding_flag, grounding_issues = await check_grounding(prompt, response_text)
             refusal_flag = check_refusal(response_text)
             toxicity_flag = check_toxicity(response_text)
     except TimeoutError:
@@ -76,6 +76,10 @@ async def run_eval(request: Request) -> ApiResponse:
     if judge_result.issues:
         flags["judge"] = judge_result.issues
 
+    judge_confidence = judge_result.confidence  # "high" | "low"
+    if judge_confidence == "low":
+        flags["judge_parse_failed"] = True
+
     db.table("eval_scores").insert({
         "response_id": response_id,
         "team_id": resp["team_id"],
@@ -87,6 +91,7 @@ async def run_eval(request: Request) -> ApiResponse:
         "refusal_flag": refusal_flag,
         "toxicity_flag": toxicity_flag,
         "flags": flags,
+        "judge_confidence": judge_confidence,
         "evaluator_model": EVALUATOR_MODEL,
         "eval_latency_ms": eval_latency,
     }).execute()

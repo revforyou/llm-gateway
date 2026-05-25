@@ -46,22 +46,25 @@ async def public_metrics() -> ApiResponse:
         c = r.get("complexity", "simple")
         complexity_counts[c] = complexity_counts.get(c, 0) + 1
 
-    # Eval scores last 24h
+    # Eval scores last 24h — exclude low-confidence (parse-failed) scores
     eval_rows = (
         db.table("eval_scores")
-        .select("quality_score, hallucination_flag, refusal_flag, created_at")
+        .select("quality_score, hallucination_flag, refusal_flag, judge_confidence, created_at")
         .eq("team_id", DEMO_TEAM)
         .gte("created_at", day_ago)
         .execute()
     ).data or []
 
+    high_conf = [r for r in eval_rows if r.get("judge_confidence") != "low"]
+    scored_rows = high_conf if high_conf else eval_rows  # fall back if all low-conf
+
     avg_quality = (
-        round(sum(r["quality_score"] for r in eval_rows) / len(eval_rows), 1)
-        if eval_rows else None
+        round(sum(r["quality_score"] for r in scored_rows) / len(scored_rows), 1)
+        if scored_rows else None
     )
     hallucination_rate = (
-        round(sum(1 for r in eval_rows if r.get("hallucination_flag")) / len(eval_rows) * 100, 1)
-        if eval_rows else None
+        round(sum(1 for r in scored_rows if r.get("hallucination_flag")) / len(scored_rows) * 100, 1)
+        if scored_rows else None
     )
 
     # Quality trend grouped by hour

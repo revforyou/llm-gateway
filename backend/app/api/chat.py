@@ -32,7 +32,7 @@ async def chat(
     t_start = time.monotonic()
 
     complexity, complexity_score = classify(body.prompt)
-    config = route(complexity)
+    config = route(complexity, complexity_score)
 
     try:
         result = await llm_client.complete(

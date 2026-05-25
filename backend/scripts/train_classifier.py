@@ -10,7 +10,9 @@ Usage:
 """
 import os
 import sys
+import json
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -23,6 +25,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 
 OUTPUT_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier.pkl"
+METRICS_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier_metrics.json"
 
 # Bitext dataset has short texts (10-150 chars), so rules are keyword-based.
 
@@ -149,6 +152,29 @@ def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(pipe, OUTPUT_PATH)
     print(f"\nSaved to {OUTPUT_PATH}")
+
+    # Save metrics JSON so they can be served at /health
+    report = classification_report(y_test, y_pred, output_dict=True)
+    metrics = {
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "train_samples": len(X_train),
+        "test_samples": len(X_test),
+        "model": "tfidf+logreg",
+        "accuracy": round(report["accuracy"], 4),
+        "per_class": {
+            cls: {
+                "precision": round(report[cls]["precision"], 4),
+                "recall": round(report[cls]["recall"], 4),
+                "f1": round(report[cls]["f1-score"], 4),
+                "support": int(report[cls]["support"]),
+            }
+            for cls in ["simple", "medium", "complex"]
+            if cls in report
+        },
+    }
+    with open(METRICS_PATH, "w") as f:
+        json.dump(metrics, f, indent=2)
+    print(f"Metrics saved to {METRICS_PATH}")
 
     # Quick sanity checks
     sanity = [

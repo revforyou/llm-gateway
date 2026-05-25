@@ -38,6 +38,7 @@ class JudgeResult(BaseModel):
     tone: int
     reasoning: str
     issues: list[str]
+    confidence: str = "high"  # "high" | "low" — low means JSON parse failed
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
@@ -68,12 +69,19 @@ async def judge(prompt: str, response: str) -> tuple[JudgeResult, int]:
         if text.startswith("json"):
             text = text[4:]
 
-    parsed = json.loads(text)
+    try:
+        parsed = json.loads(text)
+        confidence = "high"
+    except json.JSONDecodeError:
+        parsed = {}
+        confidence = "low"
+
     result = JudgeResult(
         accuracy=int(parsed.get("accuracy", 70)),
         helpfulness=int(parsed.get("helpfulness", 70)),
         tone=int(parsed.get("tone", 70)),
         reasoning=parsed.get("reasoning", ""),
         issues=parsed.get("issues", []),
+        confidence=confidence,
     )
     return result, latency_ms
