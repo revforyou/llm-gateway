@@ -43,7 +43,9 @@ class JudgeResult(BaseModel):
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=1, max=5))
 async def judge(prompt: str, response: str) -> tuple[JudgeResult, int]:
-    model = "gemini-2.0-flash"
+    # gemini-2.0-flash has no free-tier quota (429 "limit: 0").
+    # 2.5-flash-lite is the generous free-tier judge model (1000 req/day).
+    model = "gemini-2.5-flash-lite"
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}"
         f":generateContent?key={settings.gemini_api_key}"

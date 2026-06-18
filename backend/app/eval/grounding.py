@@ -1,5 +1,5 @@
 """
-Semantic grounding check using Gemini text-embedding-004.
+Semantic grounding check using Gemini embeddings.
 
 Computes cosine similarity between the prompt embedding and response embedding.
 A response that is semantically distant from the prompt is likely hallucinating
@@ -15,7 +15,8 @@ import httpx
 import math
 from app.core.config import settings
 
-EMBED_MODEL = "text-embedding-004"
+# text-embedding-004 returns 404 for this key; gemini-embedding-001 is current.
+EMBED_MODEL = "gemini-embedding-001"
 EMBED_URL = (
     f"https://generativelanguage.googleapis.com/v1beta/models/{EMBED_MODEL}"
     f":embedContent?key={settings.gemini_api_key}"
