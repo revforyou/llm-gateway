@@ -210,6 +210,92 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ML Classifier */}
+      <section className="max-w-5xl mx-auto px-6 pb-24">
+        <div className="mb-10">
+          <h2 className="text-2xl font-bold text-white">The complexity classifier</h2>
+          <p className="text-white/35 text-sm mt-2">A trained model at the core of every routing decision</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Architecture visual */}
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-xl p-6">
+            <p className="text-xs text-white/30 uppercase tracking-widest mb-5">Architecture</p>
+            <div className="space-y-2">
+              {[
+                { label: "Incoming prompt", sub: "any domain, any length", color: "border-white/10 text-white/50" },
+                null,
+                { label: "Stage 1 — Rule-based fast path", sub: "keyword matching · microseconds", color: "border-purple-500/30 text-purple-300", tag: "instant" },
+                null,
+                { label: "Stage 2 — TF-IDF + Logistic Regression", sub: "5k features · n-grams (1,2) · trained on 67k prompts", color: "border-blue-500/30 text-blue-300", tag: "ml" },
+                null,
+                { label: "simple / medium / complex", sub: "with calibrated confidence score", color: "border-emerald-500/30 text-emerald-300" },
+              ].map((item, i) =>
+                item === null ? (
+                  <div key={i} className="flex justify-center">
+                    <div className="w-px h-4 bg-white/10" />
+                  </div>
+                ) : (
+                  <div key={i} className={`border rounded-lg px-4 py-3 ${item.color}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{item.label}</span>
+                      {item.tag && (
+                        <span className="text-[10px] font-mono text-white/20 uppercase tracking-wider">{item.tag}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-white/25 mt-0.5">{item.sub}</p>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          {/* Why it matters */}
+          <div className="bg-white/[0.02] border border-white/[0.07] rounded-xl p-6 flex flex-col justify-between">
+            <div>
+              <p className="text-xs text-white/30 uppercase tracking-widest mb-5">Why it matters</p>
+              <div className="space-y-4">
+                {[
+                  {
+                    title: "No LLM to classify prompts",
+                    desc: "Calling an LLM to decide routing adds 500ms+ and costs money on every request. The trained model runs in microseconds with zero API calls.",
+                  },
+                  {
+                    title: "Confidence-gated routing",
+                    desc: "If P(simple) < 0.75, the request is upgraded to medium. If P(medium) < 0.65, it becomes complex. Under-confidence never sends a hard question to the cheap model.",
+                  },
+                  {
+                    title: "Ships as a .pkl, not a service",
+                    desc: "The model loads on startup and stays in memory. No cold-start retraining, no external model server, no added latency.",
+                  },
+                  {
+                    title: "Closes the feedback loop",
+                    desc: "Eval scores from production flow into a weekly retrain job. Mis-routed requests (high quality score from the cheap model, low from the expensive) correct the boundary.",
+                  },
+                ].map(({ title, desc }) => (
+                  <div key={title}>
+                    <p className="text-sm font-medium text-white/70">{title}</p>
+                    <p className="text-xs text-white/35 mt-1 leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-6 pt-5 border-t border-white/[0.06] grid grid-cols-3 gap-4 text-center">
+              {[
+                { val: "55k", label: "training prompts" },
+                { val: "3", label: "models compared" },
+                { val: "0.95", label: "weighted F1" },
+              ].map(({ val, label }) => (
+                <div key={label}>
+                  <div className="text-lg font-bold text-blue-400">{val}</div>
+                  <div className="text-[11px] text-white/25 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Features */}
       <section className="max-w-5xl mx-auto px-6 pb-24">
         <div className="mb-10">

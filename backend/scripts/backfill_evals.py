@@ -12,13 +12,17 @@ API_URL = os.environ["API_URL"]
 def main():
     db = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    result = db.rpc(
-        "find_unevaluated_responses",
-        {"hours_back": 24}
-    ).execute()
+    try:
+        result = db.rpc(
+            "find_unevaluated_responses",
+            {"hours_back": 24}
+        ).execute()
+        unevaluated = [r["id"] for r in (result.data or [])]
+    except Exception as e:
+        print(f"RPC not available ({e}), falling back to manual query")
+        unevaluated = []
 
-    if not result.data:
-        # Fallback: manual join query
+    if not unevaluated:
         responses = (
             db.table("responses")
             .select("id")
@@ -37,8 +41,6 @@ def main():
         )
 
         unevaluated = [r["id"] for r in responses if r["id"] not in eval_ids]
-    else:
-        unevaluated = [r["id"] for r in result.data]
 
     print(f"Found {len(unevaluated)} unevaluated responses")
 

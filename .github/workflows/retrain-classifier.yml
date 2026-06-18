@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install scikit-learn joblib numpy datasets supabase
+        run: pip install scikit-learn joblib numpy datasets supabase huggingface_hub
 
       - name: Retrain from eval feedback
         env:

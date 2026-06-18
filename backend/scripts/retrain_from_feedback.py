@@ -9,18 +9,15 @@ Logic:
     → relabel as 'medium' and add to training data.
   - Only retrain when >= MIN_CORRECTIONS feedback corrections are available
     (avoids overfitting on noise).
-  - Combines feedback examples with original Bitext data and retrains from scratch.
+  - Combines feedback examples with Alpaca base data and retrains from scratch.
 
 Usage (called by GitHub Actions weekly):
     python backend/scripts/retrain_from_feedback.py
 """
 import os
-import sys
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import joblib
 from sklearn.linear_model import LogisticRegression
@@ -30,60 +27,57 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score
 from supabase import create_client
 
-MIN_CORRECTIONS = 10          # don't retrain on fewer corrections than this
-QUALITY_LOW_THRESHOLD = 65    # simple-routed + score < 65 → misrouted, relabel medium
-QUALITY_HIGH_THRESHOLD = 85   # complex-routed + score > 85 → over-served, relabel medium
+MIN_CORRECTIONS = 10
+QUALITY_LOW_THRESHOLD = 65
+QUALITY_HIGH_THRESHOLD = 85
 
 OUTPUT_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier.pkl"
 METRICS_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier_metrics.json"
 
-COMPLEX_KEYWORDS = {
-    "complaint", "complain", "speak to", "speak with", "human agent",
-    "customer service", "manager", "supervisor", "charged twice", "charged wrong",
-    "wrongly charged", "dispute", "fraud", "unauthorized", "legal",
-    "refund", "get my money", "money back", "chargeback", "escalate",
-    "not acceptable", "unacceptable", "demand",
-}
-SIMPLE_KEYWORDS = {
-    "how do i", "how to", "how can i", "what is", "where is", "where can i",
-    "when will", "can i", "is it possible", "do you accept",
-    "track my order", "track order", "order status", "where is my order",
-    "reset my password", "forgot my password", "recover password",
-    "newsletter", "subscribe", "unsubscribe",
-    "check", "view", "see my", "find my", "show me",
-    "payment methods", "accepted payments",
-}
 
-
-def label_text(text: str, intent: str = "") -> str:
-    text_lower = text.lower()
-    intent_lower = (intent or "").lower()
-    complex_intents = {"contact_human_agent", "complaint", "payment_issue", "get_refund", "track_refund"}
-    if intent_lower in complex_intents or any(k in text_lower for k in COMPLEX_KEYWORDS):
-        return "complex"
-    simple_intents = {
-        "track_order", "recover_password", "check_payment_methods",
-        "check_refund_policy", "delivery_period", "newsletter_subscription",
-        "check_invoice", "check_cancellation_fee",
-    }
-    if intent_lower in simple_intents or any(k in text_lower for k in SIMPLE_KEYWORDS):
-        return "simple"
-    return "medium"
-
-
-def load_bitext(n: int = 5000) -> tuple[list[str], list[str]]:
+def load_base_dataset(n: int = 5000) -> tuple[list[str], list[str]]:
     from datasets import load_dataset
-    print("Loading Bitext from HuggingFace...")
-    ds = load_dataset(
-        "Bitext/Bitext-customer-support-llm-chatbot-training-dataset",
-        split="train",
+    import re
+
+    MULTI_STEP_RE = re.compile(
+        r"\b(and then|step \d|firstly|secondly|thirdly|finally|additionally|"
+        r"furthermore|next,|after that|in addition|as well as)\b",
+        re.IGNORECASE,
     )
+    TECHNICAL_RE = re.compile(
+        r"\b(implement|algorithm|architecture|refactor|optimize|design a system|"
+        r"build a|create a (class|function|api|database|pipeline|model)|"
+        r"debug|microservice|distributed|concurren|asynchronous|tradeoff|"
+        r"compare and contrast|pros and cons|analyze|evaluate|critique)\b",
+        re.IGNORECASE,
+    )
+
+    def _label(text: str) -> str:
+        words = text.split()
+        n_words = len(words)
+        multi = len(MULTI_STEP_RE.findall(text))
+        technical = bool(TECHNICAL_RE.search(text))
+        n_sent = text.count(".") + text.count("?") + text.count("!")
+        if n_words > 130 or (multi >= 3 and n_words > 45) or (technical and n_words > 75 and n_sent >= 3):
+            return "complex"
+        if n_words <= 30 and multi == 0:
+            return "simple"
+        if n_sent == 1 and n_words <= 50 and multi <= 1 and not technical:
+            return "simple"
+        return "medium"
+
+    print("Loading base dataset (alpaca) for retrain foundation...")
+    ds = load_dataset("tatsu-lab/alpaca", split="train")
     texts, labels = [], []
-    for item in ds.select(range(min(n, len(ds)))):
-        text = item.get("instruction") or item.get("input") or item.get("text", "")
+    for item in ds:
+        instruction = (item.get("instruction") or "").strip()
+        inp = (item.get("input") or "").strip()
+        text = f"{instruction} {inp}".strip() if inp else instruction
         if text:
-            texts.append(text[:2000])
-            labels.append(label_text(text, item.get("intent", "")))
+            texts.append(text[:1500])
+            labels.append(_label(text))
+        if len(texts) >= n:
+            break
     return texts, labels
 
 
@@ -213,8 +207,8 @@ def main():
     from collections import Counter
     print(f"Correction label distribution: {dict(Counter(correction_labels))}")
 
-    base_texts, base_labels = load_bitext(n=5000)
-    print(f"Loaded {len(base_texts)} Bitext base samples")
+    base_texts, base_labels = load_base_dataset(n=5000)
+    print(f"Loaded {len(base_texts)} base samples")
 
     pipe, metrics = retrain(base_texts, base_labels, correction_texts, correction_labels)
 

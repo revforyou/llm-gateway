@@ -1,22 +1,123 @@
 {
-  "trained_at": "2026-05-25T20:47:24.749376+00:00",
-  "train_samples": 4000,
-  "test_samples": 23,
-  "model": "tfidf+logreg",
-  "note": "Complex tier is rule-based (keyword pre-filter). ML model decides simple vs medium only.",
-  "accuracy": 0.6087,
-  "per_class": {
-    "simple": {
-      "precision": 0.5789,
-      "recall": 0.9167,
-      "f1": 0.7097,
-      "support": 12
+  "trained_at": "2026-06-18T00:15:27.086545+00:00",
+  "model": "logistic_regression",
+  "datasets": [
+    "tatsu-lab/alpaca (~40k)",
+    "databricks/databricks-dolly-15k (~15k)"
+  ],
+  "total_samples": 55000,
+  "label_distribution": {
+    "simple": 48654,
+    "medium": 3783,
+    "complex": 2563
+  },
+  "split": {
+    "train": 38500,
+    "val": 8250,
+    "test": 8250
+  },
+  "cv_results": {
+    "naive_bayes": {
+      "cv_macro_f1_mean": 0.6963,
+      "cv_macro_f1_std": 0.0063
     },
-    "medium": {
-      "precision": 0.75,
-      "recall": 0.2727,
-      "f1": 0.4,
-      "support": 11
+    "logistic_regression": {
+      "cv_macro_f1_mean": 0.8373,
+      "cv_macro_f1_std": 0.0092
+    },
+    "linear_svc": {
+      "cv_macro_f1_mean": 0.8224,
+      "cv_macro_f1_std": 0.007
     }
+  },
+  "val_macro_f1_per_model": {
+    "naive_bayes": 0.689,
+    "logistic_regression": 0.8392,
+    "linear_svc": 0.8306
+  },
+  "test_metrics": {
+    "macro_f1": 0.8466,
+    "weighted_f1": 0.9537,
+    "per_class": {
+      "simple": {
+        "precision": 0.9917,
+        "recall": 0.9659,
+        "f1": 0.9786,
+        "support": 7298
+      },
+      "medium": {
+        "precision": 0.611,
+        "recall": 0.7813,
+        "f1": 0.6858,
+        "support": 567
+      },
+      "complex": {
+        "precision": 0.8417,
+        "recall": 0.9117,
+        "f1": 0.8753,
+        "support": 385
+      }
+    },
+    "confusion_matrix": [
+      [
+        7049,
+        249,
+        0
+      ],
+      [
+        58,
+        443,
+        66
+      ],
+      [
+        1,
+        33,
+        351
+      ]
+    ]
+  },
+  "top_features_per_class": {
+    "complex": [
+      "of the",
+      "by",
+      "with",
+      "as",
+      "on",
+      "to",
+      "in the",
+      "at",
+      "and the",
+      "that",
+      "also",
+      "to the"
+    ],
+    "medium": [
+      "the",
+      "and",
+      "of",
+      "in",
+      "is",
+      "paragraph",
+      "born",
+      "passage",
+      "william",
+      "beatles",
+      "finally",
+      "article"
+    ],
+    "simple": [
+      "what",
+      "write",
+      "sentence",
+      "why",
+      "generate",
+      "describe",
+      "what are",
+      "the given",
+      "this sentence",
+      "what is",
+      "find the",
+      "create"
+    ]
   }
 }

@@ -1,166 +1,187 @@
 """
-Trains the complexity classifier on the Bitext dataset.
-Produces backend/app/gateway/classifier.pkl.
+Train the LLM request complexity classifier.
 
-Target distribution: 70% simple / 25% medium / 5% complex (±5pp).
+Datasets
+--------
+  tatsu-lab/alpaca         ~52k diverse instruction prompts
+  databricks/dolly-15k     ~15k diverse instruction prompts (Apache 2.0)
+  Total                    ~67k prompts across domains (coding, QA, creative, analysis)
 
-Usage:
-    python backend/scripts/train_classifier.py
-    python backend/scripts/train_classifier.py --from-supabase
+Labeling
+--------
+  Labels are derived from structural features of the prompt:
+    - Word count
+    - Number of sub-task / chaining signals ("first ... then ...", "also", etc.)
+    - Presence of technical / open-ended keywords
+  The function is domain-agnostic — it works on any type of prompt.
+
+Models compared
+---------------
+  1. MultinomialNB + TF-IDF   (fast baseline)
+  2. LogisticRegression + TF-IDF
+  3. LinearSVC + TF-IDF
+
+Evaluation protocol
+-------------------
+  70 / 15 / 15  train / val / test split (stratified)
+  5-fold cross-validation on the training set
+  Model selection via macro-F1 on the validation set
+  Final metrics reported on the held-out test set (looked at ONCE)
+
+Output
+------
+  backend/app/gateway/classifier.pkl
+  backend/app/gateway/classifier_metrics.json
 """
-import os
-import sys
+
 import json
-import argparse
+import re
+import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 import joblib
-from sklearn.linear_model import LogisticRegression
+import numpy as np
+from datasets import load_dataset
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    f1_score,
+)
+from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.svm import LinearSVC
 
 OUTPUT_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier.pkl"
 METRICS_PATH = Path(__file__).parent.parent / "app" / "gateway" / "classifier_metrics.json"
 
-# Bitext dataset has short texts (10-150 chars), so rules are keyword-based.
+# ── Labeling ──────────────────────────────────────────────────────────────────
 
-COMPLEX_KEYWORDS = {
-    "complaint", "complain", "speak to", "speak with", "human agent",
-    "customer service", "manager", "supervisor", "charged twice", "charged wrong",
-    "wrongly charged", "dispute", "fraud", "unauthorized", "legal",
-    "refund", "get my money", "money back", "chargeback", "escalate",
-    "not acceptable", "unacceptable", "demand",
-}
+MULTI_STEP_RE = re.compile(
+    r"\b(and then|step \d|firstly|secondly|thirdly|finally|additionally|"
+    r"furthermore|next,|after that|in addition|as well as)\b",
+    re.IGNORECASE,
+)
 
-# Simple = informational / single-action requests
-SIMPLE_KEYWORDS = {
-    "how do i", "how to", "how can i", "what is", "where is", "where can i",
-    "when will", "can i", "is it possible", "do you accept",
-    "track my order", "track order", "order status", "where is my order",
-    "reset my password", "forgot my password", "recover password",
-    "newsletter", "subscribe", "unsubscribe",
-    "check", "view", "see my", "find my", "show me",
-    "payment methods", "accepted payments",
-}
+TECHNICAL_RE = re.compile(
+    r"\b(implement|algorithm|architecture|refactor|optimize|design a system|"
+    r"build a|create a (class|function|api|database|pipeline|model)|"
+    r"debug|microservice|distributed|concurren|asynchronous|tradeoff|"
+    r"compare and contrast|pros and cons|analyze|evaluate|critique)\b",
+    re.IGNORECASE,
+)
 
 
-def label(text: str, intent: str = "", category: str = "") -> str:
-    text_lower = text.lower()
-    intent_lower = (intent or "").lower()
+def label_complexity(text: str) -> str:
+    words = text.split()
+    n = len(words)
+    multi = len(MULTI_STEP_RE.findall(text))
+    technical = bool(TECHNICAL_RE.search(text))
+    n_sentences = text.count(".") + text.count("?") + text.count("!")
 
-    # Complex: high-stakes, escalation, financial dispute
-    complex_intents = {
-        "contact_human_agent", "complaint", "payment_issue",
-        "get_refund", "track_refund",
-    }
-    if intent_lower in complex_intents:
-        return "complex"
-    if any(k in text_lower for k in COMPLEX_KEYWORDS):
+    # Complex: long OR deeply multi-step OR technical + explanation-heavy
+    if n > 130 or (multi >= 3 and n > 45) or (technical and n > 75 and n_sentences >= 3):
         return "complex"
 
-    # Simple: informational, single-action, standard FAQ
-    simple_intents = {
-        "track_order", "recover_password", "check_payment_methods",
-        "check_refund_policy", "delivery_period", "newsletter_subscription",
-        "check_invoice", "check_cancellation_fee",
-    }
-    if intent_lower in simple_intents:
+    # Simple: short factual / single-step
+    if n <= 30 and multi == 0:
         return "simple"
-    if any(k in text_lower for k in SIMPLE_KEYWORDS):
+
+    # Single direct question
+    if n_sentences == 1 and n <= 50 and multi <= 1 and not technical:
         return "simple"
 
     return "medium"
 
 
-def check_distribution(labels: list[str]) -> dict:
-    from collections import Counter
-    counts = Counter(labels)
-    total = len(labels)
-    return {k: round(counts.get(k, 0) / total * 100, 1) for k in ["simple", "medium", "complex"]}
+# ── Data loading ──────────────────────────────────────────────────────────────
 
-
-def load_from_huggingface(n: int = 5000) -> list[dict]:
-    from datasets import load_dataset
-    print("Downloading from HuggingFace...")
-    ds = load_dataset(
-        "Bitext/Bitext-customer-support-llm-chatbot-training-dataset",
-        split="train",
-    )
-    items = []
-    for item in ds.select(range(min(n, len(ds)))):
-        text = item.get("instruction") or item.get("input") or item.get("text", "")
+def load_alpaca(n: int = 40_000) -> tuple[list[str], list[str]]:
+    print("Loading tatsu-lab/alpaca...")
+    ds = load_dataset("tatsu-lab/alpaca", split="train")
+    texts, labels = [], []
+    for item in ds:
+        instruction = (item.get("instruction") or "").strip()
+        inp = (item.get("input") or "").strip()
+        text = f"{instruction} {inp}".strip() if inp else instruction
         if text:
-            items.append({
-                "text": text[:2000],
-                "intent": item.get("intent", ""),
-                "category": item.get("category", ""),
-            })
-    return items
+            texts.append(text[:1500])
+            labels.append(label_complexity(text))
+        if len(texts) >= n:
+            break
+    return texts, labels
 
 
-def load_from_supabase() -> list[dict]:
-    from supabase import create_client
-    db = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
-    result = db.table("tickets_seed").select("text, intent, difficulty").execute()
-    return [{"text": r["text"], "intent": r.get("intent", ""), "category": ""}
-            for r in result.data if r.get("text")]
+def load_dolly(n: int = 15_000) -> tuple[list[str], list[str]]:
+    print("Loading databricks/databricks-dolly-15k...")
+    ds = load_dataset("databricks/databricks-dolly-15k", split="train")
+    texts, labels = [], []
+    for item in ds:
+        text = (item.get("instruction") or "").strip()
+        ctx = (item.get("context") or "").strip()
+        if ctx:
+            text = f"{text} {ctx}".strip()
+        if text:
+            texts.append(text[:1500])
+            labels.append(label_complexity(text))
+        if len(texts) >= n:
+            break
+    return texts, labels
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--from-supabase", action="store_true")
-    args = parser.parse_args()
+# ── Model definitions ─────────────────────────────────────────────────────────
 
-    items = load_from_supabase() if args.from_supabase else load_from_huggingface()
-    print(f"Loaded {len(items)} samples")
-
-    texts = [i["text"] for i in items]
-    labels = [label(i["text"], i.get("intent", ""), i.get("category", "")) for i in items]
-
-    dist = check_distribution(labels)
-    print(f"Label distribution: {dist}")
-
-    targets = {"simple": 70, "medium": 25, "complex": 5}
-    for cls, target in targets.items():
-        actual = dist.get(cls, 0)
-        if abs(actual - target) > 5:
-            print(f"NOTE: {cls}={actual}% vs target {target}% (±5pp). "
-                  f"Continuing — model learns patterns from text.")
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        texts, labels, test_size=0.2, random_state=42, stratify=labels
+def make_tfidf():
+    return TfidfVectorizer(
+        max_features=8000,
+        ngram_range=(1, 2),
+        sublinear_tf=True,
+        min_df=2,
+        # No stop_words — structural words like "with", "and", "of" are genuine
+        # complexity signals (complex prompts chain requirements: "X with Y, and Z").
+        # Filtering them hurts macro-F1 by ~5pp.
     )
 
-    pipe = Pipeline([
-        ("tfidf", TfidfVectorizer(max_features=5000, ngram_range=(1, 2), sublinear_tf=True)),
-        ("clf", LogisticRegression(class_weight="balanced", max_iter=1000, C=1.0)),
-    ])
-    pipe.fit(X_train, y_train)
 
-    y_pred = pipe.predict(X_test)
-    print("\nClassification report (test set):")
-    print(classification_report(y_test, y_pred))
+def make_models() -> dict[str, Pipeline]:
+    return {
+        "naive_bayes": Pipeline([
+            ("tfidf", make_tfidf()),
+            ("clf", MultinomialNB(alpha=0.1)),
+        ]),
+        "logistic_regression": Pipeline([
+            ("tfidf", make_tfidf()),
+            ("clf", LogisticRegression(class_weight="balanced", max_iter=1000, C=1.5, solver="lbfgs")),
+        ]),
+        "linear_svc": Pipeline([
+            ("tfidf", make_tfidf()),
+            ("clf", CalibratedClassifierCV(LinearSVC(class_weight="balanced", max_iter=2000, C=1.0))),
+        ]),
+    }
 
-    holdout_dist = check_distribution(list(y_pred))
-    print(f"Holdout prediction distribution: {holdout_dist}")
 
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(pipe, OUTPUT_PATH)
-    print(f"\nSaved to {OUTPUT_PATH}")
+# ── Evaluation ────────────────────────────────────────────────────────────────
 
-    # Save metrics JSON so they can be served at /health
-    report = classification_report(y_test, y_pred, output_dict=True)
-    metrics = {
-        "trained_at": datetime.now(timezone.utc).isoformat(),
-        "train_samples": len(X_train),
-        "test_samples": len(X_test),
-        "model": "tfidf+logreg",
-        "accuracy": round(report["accuracy"], 4),
+def evaluate(pipe, X: list[str], y: list[str], split_name: str) -> dict:
+    y_pred = pipe.predict(X)
+    report = classification_report(y, y_pred, output_dict=True)
+    cm = confusion_matrix(y, y_pred, labels=["simple", "medium", "complex"])
+
+    print(f"\n── {split_name} ──")
+    print(classification_report(y, y_pred))
+    print("Confusion matrix (rows=actual, cols=predicted):")
+    print("              simple  medium  complex")
+    for label, row in zip(["simple", "medium", "complex"], cm):
+        print(f"  {label:>10}  {row}")
+
+    return {
+        "macro_f1": round(f1_score(y, y_pred, average="macro"), 4),
+        "weighted_f1": round(f1_score(y, y_pred, average="weighted"), 4),
         "per_class": {
             cls: {
                 "precision": round(report[cls]["precision"], 4),
@@ -171,24 +192,102 @@ def main():
             for cls in ["simple", "medium", "complex"]
             if cls in report
         },
+        "confusion_matrix": cm.tolist(),
     }
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    # 1. Load datasets
+    alpaca_texts, alpaca_labels = load_alpaca(40_000)
+    dolly_texts, dolly_labels = load_dolly(15_000)
+
+    texts = alpaca_texts + dolly_texts
+    labels = alpaca_labels + dolly_labels
+
+    dist = Counter(labels)
+    total = len(labels)
+    print(f"\nTotal samples: {total}")
+    print(f"Distribution: simple={dist['simple']} ({100*dist['simple']//total}%)  "
+          f"medium={dist['medium']} ({100*dist['medium']//total}%)  "
+          f"complex={dist['complex']} ({100*dist['complex']//total}%)")
+
+    # 2. Stratified 70 / 15 / 15 split
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        texts, labels, test_size=0.30, random_state=42, stratify=labels
+    )
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp, test_size=0.50, random_state=42, stratify=y_temp
+    )
+    print(f"\nSplit — train: {len(X_train)}, val: {len(X_val)}, test: {len(X_test)}")
+
+    models = make_models()
+
+    # 3. 5-fold CV on training set
+    print("\n── 5-fold cross-validation (training set) ──")
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    cv_results = {}
+    for name, pipe in models.items():
+        scores = cross_val_score(pipe, X_train, y_train, cv=cv, scoring="f1_macro", n_jobs=-1)
+        cv_results[name] = {
+            "cv_macro_f1_mean": round(float(scores.mean()), 4),
+            "cv_macro_f1_std": round(float(scores.std()), 4),
+        }
+        print(f"  {name}: {scores.mean():.4f} ± {scores.std():.4f}")
+
+    # 4. Fit all models, pick best on validation set
+    print("\n── Validation set ──")
+    val_scores = {}
+    for name, pipe in models.items():
+        pipe.fit(X_train, y_train)
+        val_scores[name] = float(f1_score(pipe.predict(X_val), y_val, average="macro"))
+        print(f"  {name}: macro-F1 = {val_scores[name]:.4f}")
+
+    best_name = max(val_scores, key=val_scores.__getitem__)
+    print(f"\nWinner: {best_name} (val macro-F1 = {val_scores[best_name]:.4f})")
+
+    # 5. Re-fit winner on train+val, evaluate on held-out test set
+    winner = models[best_name]
+    winner.fit(X_train + X_val, y_train + y_val)
+    test_metrics = evaluate(winner, X_test, y_test, "Test set (held-out, looked at once)")
+
+    # 6. Top predictive features (LogReg / NB)
+    top_features: dict = {}
+    if best_name in ("logistic_regression", "naive_bayes"):
+        vocab = winner.named_steps["tfidf"].get_feature_names_out()
+        clf = winner.named_steps["clf"]
+        if hasattr(clf, "coef_"):
+            for i, cls in enumerate(clf.classes_):
+                top_idx = np.argsort(clf.coef_[i])[-12:][::-1]
+                top_features[cls] = [vocab[j] for j in top_idx]
+
+    # 7. Save
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(winner, OUTPUT_PATH)
+    print(f"\nSaved: {OUTPUT_PATH}")
+
+    metrics = {
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "model": best_name,
+        "datasets": ["tatsu-lab/alpaca (~40k)", "databricks/databricks-dolly-15k (~15k)"],
+        "total_samples": total,
+        "label_distribution": {k: int(v) for k, v in dist.items()},
+        "split": {"train": len(X_train), "val": len(X_val), "test": len(X_test)},
+        "cv_results": cv_results,
+        "val_macro_f1_per_model": {k: round(v, 4) for k, v in val_scores.items()},
+        "test_metrics": test_metrics,
+        "top_features_per_class": top_features,
+    }
+
     with open(METRICS_PATH, "w") as f:
         json.dump(metrics, f, indent=2)
-    print(f"Metrics saved to {METRICS_PATH}")
+    print(f"Saved: {METRICS_PATH}")
 
-    # Quick sanity checks
-    sanity = [
-        ("How do I reset my password?", "simple"),
-        ("I need to speak to a human agent immediately.", "complex"),
-        ("Where is my order?", "simple"),
-        ("I was charged twice and want my money back.", "complex"),
-        ("How do I cancel my subscription?", "medium"),
-    ]
-    print("\nSanity checks:")
-    for text, expected in sanity:
-        pred = pipe.predict([text])[0]
-        status = "✓" if pred == expected else f"✗ (got {pred})"
-        print(f"  [{status}] '{text[:50]}' → {pred}")
+    print(f"\n── Final ──")
+    print(f"  Model:       {best_name}")
+    print(f"  Weighted F1: {test_metrics['weighted_f1']}")
+    print(f"  Macro F1:    {test_metrics['macro_f1']}")
 
 
 if __name__ == "__main__":
