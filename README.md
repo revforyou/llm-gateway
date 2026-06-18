@@ -56,10 +56,12 @@ Client Request
 
 A two-stage classifier avoids the latency of calling an LLM to classify complexity:
 
-1. **Rule-based fast path** — keyword matching catches unambiguous complex cases (fraud, billing disputes, escalation requests) in microseconds
-2. **TF-IDF + Logistic Regression fallback** — trained on the Bitext customer support dataset (27k examples), classifies simple vs. medium with ~88% accuracy
+1. **Rule-based fast path** — keyword + structural heuristics catch unambiguous complex cases (multi-step requests, escalations) in microseconds
+2. **TF-IDF + Logistic Regression** — trained on **55k diverse instruction prompts** (Alpaca + Dolly), domain-agnostic so it generalizes beyond any single use case
 
-The trained model ships as `classifier.pkl` committed to the repo. No cold-start retraining on Render.
+The model was selected rigorously: a 70/15/15 train/val/test split with 5-fold cross-validation, comparing three classifiers (Multinomial Naive Bayes, Logistic Regression, LinearSVC). Logistic Regression won on validation macro-F1 and scored **0.95 weighted F1 / 0.85 macro-F1** on the held-out test set. Full metrics (per-class precision/recall, confusion matrix, top features) are written to `classifier_metrics.json` and surfaced on the `/health` endpoint.
+
+If the model fails to load (e.g. a library version skew in prod), classification **fails open** to the rule-based path rather than crashing the gateway. The trained model ships as `classifier.pkl` — no cold-start retraining on Render — and a weekly job retrains it on production eval feedback.
 
 ```
 simple  → llama-3.1-8b-instant   (~$0.05/M tokens)
