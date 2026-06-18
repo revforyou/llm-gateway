@@ -23,10 +23,20 @@ COMPLEX_KEYWORDS = {
 }
 
 
+_model_load_failed = False
+
+
 def _load_model():
-    global _model
-    if _model is None and os.path.exists(MODEL_PATH):
-        _model = joblib.load(MODEL_PATH)
+    """Load the pickled model once. If it fails (e.g. sklearn version skew
+    between training and runtime), mark it failed and never retry — the caller
+    falls back to rule-based classification instead of crashing the gateway."""
+    global _model, _model_load_failed
+    if _model is None and not _model_load_failed and os.path.exists(MODEL_PATH):
+        try:
+            _model = joblib.load(MODEL_PATH)
+        except Exception as e:
+            _model_load_failed = True
+            print(f"[classifier] model load failed, using rule-based fallback: {e}")
     return _model
 
 
@@ -55,11 +65,16 @@ def classify(text: str) -> tuple[str, float]:
     else:
         model = _load_model()
         if model is not None:
-            proba = model.predict_proba([text])[0]
-            classes = list(model.classes_)
-            idx = int(proba.argmax())
-            complexity = classes[idx]
-            score = float(proba[idx])
+            try:
+                proba = model.predict_proba([text])[0]
+                classes = list(model.classes_)
+                idx = int(proba.argmax())
+                complexity = classes[idx]
+                score = float(proba[idx])
+            except Exception as e:
+                # Predict-time failure (version skew, bad input) — never 500.
+                print(f"[classifier] predict failed, using rule-based fallback: {e}")
+                complexity, score = _rule_based_classify(text)
         else:
             complexity, score = _rule_based_classify(text)
 

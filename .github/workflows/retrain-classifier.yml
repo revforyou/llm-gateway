@@ -22,7 +22,8 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: pip install scikit-learn joblib numpy datasets supabase huggingface_hub
+        # Pin to match runtime (Render) so the committed pkl loads in production.
+        run: pip install "scikit-learn==1.4.2" "joblib==1.4.2" "numpy==1.26.4" "scipy==1.13.1" datasets supabase huggingface_hub
 
       - name: Retrain from eval feedback
         env:
