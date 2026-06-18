@@ -312,7 +312,6 @@ export default function DemoPage() {
           <StatCard
             label="Gateway Overhead"
             value={isLoading ? "…" : stats.gateway_overhead_ms != null ? `${stats.gateway_overhead_ms}ms` : "—"}
-            sub="our code only, excludes inference"
           />
         </div>
 
