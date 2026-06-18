@@ -21,7 +21,7 @@ async def public_metrics() -> ApiResponse:
     # Requests last 24h
     req_rows = (
         db.table("requests")
-        .select("id, cost_usd, latency_ms, complexity, model_used, prompt, created_at")
+        .select("id, cost_usd, latency_ms, gateway_overhead_ms, complexity, model_used, prompt, created_at")
         .eq("team_id", DEMO_TEAM)
         .gte("created_at", day_ago)
         .order("created_at", desc=True)
@@ -32,6 +32,15 @@ async def public_metrics() -> ApiResponse:
     total_cost = sum(float(r["cost_usd"]) for r in req_rows)
     latencies = sorted(r["latency_ms"] for r in req_rows)
     p95 = latencies[int(len(latencies) * 0.95)] if len(latencies) >= 5 else (latencies[-1] if latencies else None)
+
+    # Gateway overhead = our own processing time (auth, classify, route, DB writes),
+    # excluding LLM inference. Median is the honest figure — p95/max are inflated by
+    # provider retry/backoff waits that get attributed to overhead.
+    overheads = sorted(
+        r["gateway_overhead_ms"] for r in req_rows
+        if r.get("gateway_overhead_ms") is not None and r["gateway_overhead_ms"] >= 0
+    )
+    gateway_overhead_ms = overheads[len(overheads) // 2] if overheads else None
 
     # Complexity distribution last 7 days
     week_rows = (
@@ -136,6 +145,7 @@ async def public_metrics() -> ApiResponse:
             "avg_quality": avg_quality,
             "total_cost_usd": round(total_cost, 6),
             "p95_latency_ms": p95,
+            "gateway_overhead_ms": gateway_overhead_ms,
             "hallucination_rate": hallucination_rate,
             "cost_savings_usd": cost_savings_usd,
             "savings_pct": savings_pct,

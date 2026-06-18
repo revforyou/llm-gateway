@@ -310,9 +310,9 @@ export default function DemoPage() {
             sub={hasData ? `${stats.savings_pct}% vs always-70B` : "accumulates with traffic"}
           />
           <StatCard
-            label="p95 Latency"
-            value={isLoading ? "…" : stats.p95_latency_ms ? `${stats.p95_latency_ms}ms` : "—"}
-            sub="end-to-end incl. inference"
+            label="Gateway Overhead"
+            value={isLoading ? "…" : stats.gateway_overhead_ms != null ? `${stats.gateway_overhead_ms}ms` : "—"}
+            sub={stats.p95_latency_ms ? `our code only · ${stats.p95_latency_ms}ms p95 incl. inference` : "our code only, excludes inference"}
           />
         </div>
 
