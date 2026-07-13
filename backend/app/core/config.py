@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     qstash_next_signing_key: str
 
     eval_sample_rate: float = 0.85
+    # Fraction of sampled evals that run through the LangGraph reflection-loop
+    # pipeline (app/eval/agentic) instead of the classic single-shot judge.
+    # Kept modest so the critic's extra Gemini calls stay inside the free-tier
+    # daily quota alongside the classic pipeline's calls.
+    agentic_eval_sample_rate: float = 0.2
     traffic_burst_size: int = 12
 
     internal_cron_secret: str
