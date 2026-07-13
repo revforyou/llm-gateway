@@ -16,10 +16,6 @@ class Settings(BaseSettings):
 
     redis_url: str
 
-    qstash_token: str
-    qstash_current_signing_key: str
-    qstash_next_signing_key: str
-
     eval_sample_rate: float = 0.85
     # Fraction of sampled evals that run through the LangGraph reflection-loop
     # pipeline (app/eval/agentic) instead of the classic single-shot judge.

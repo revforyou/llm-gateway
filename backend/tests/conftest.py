@@ -12,9 +12,6 @@ _DEFAULTS = {
     "SUPABASE_SERVICE_KEY": "test-service-key",
     "SUPABASE_ANON_KEY": "test-anon-key",
     "REDIS_URL": "redis://localhost:6379",
-    "QSTASH_TOKEN": "test-qstash-token",
-    "QSTASH_CURRENT_SIGNING_KEY": "test-sig-current",
-    "QSTASH_NEXT_SIGNING_KEY": "test-sig-next",
     "INTERNAL_CRON_SECRET": "test-cron-secret",
     "APP_BASE_URL": "http://localhost:8000",
 }

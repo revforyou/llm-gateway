@@ -26,12 +26,6 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
-      - key: QSTASH_TOKEN
-        sync: false
-      - key: QSTASH_CURRENT_SIGNING_KEY
-        sync: false
-      - key: QSTASH_NEXT_SIGNING_KEY
-        sync: false
       - key: INTERNAL_CRON_SECRET
         sync: false
       - key: ALERT_WEBHOOK_SECRET

@@ -2,7 +2,6 @@ import hashlib
 import random
 import time
 import asyncio
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from app.core.auth import verify_api_key_dep
 from app.core.ratelimit import check_rate_limit
@@ -14,6 +13,7 @@ from app.gateway.router import route
 from app.gateway import llm_client
 from app.gateway.providers.groq_client import ProviderError
 from app.gateway.pricing import calc_cost
+from app.eval.runner import evaluate_response
 from app.models.schemas import ChatRequest, ChatResponse, ApiResponse
 
 router = APIRouter(prefix="/v1/chat", tags=["chat"])
@@ -81,7 +81,7 @@ async def chat(
 
     response_id = resp_row.data[0]["id"]
 
-    task = asyncio.create_task(_enqueue_eval(response_id))
+    task = asyncio.create_task(_run_eval_background(response_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     log_audit(
@@ -102,15 +102,14 @@ async def chat(
     ))
 
 
-async def _enqueue_eval(response_id: str) -> None:
+async def _run_eval_background(response_id: str) -> None:
+    # Evaluate off the critical path, in-process. The response has already been
+    # returned to the client; this coroutine runs afterward as a fire-and-forget
+    # background task. Sampled at eval_sample_rate. Errors are swallowed so a
+    # failed eval never affects the already-served request.
     if random.random() > settings.eval_sample_rate:
         return
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"https://qstash.upstash.io/v2/publish/{settings.app_base_url}/v1/eval/run",
-                headers={"Authorization": f"Bearer {settings.qstash_token}"},
-                json={"response_id": response_id},
-            )
+        await evaluate_response(response_id)
     except Exception:
         pass

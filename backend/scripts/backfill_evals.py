@@ -1,12 +1,25 @@
-"""Daily job: find responses without eval rows and re-enqueue them."""
+"""Daily job: find responses without eval rows and evaluate them.
+
+Safety net for the in-process eval path (app/api/chat.py): if the gateway restarts
+mid-eval, that eval is lost, and this job catches it the next day. It POSTs each
+missed response straight to the gateway's /v1/eval/run endpoint (which runs the
+eval synchronously) — no external queue involved.
+
+Capped per run and lightly throttled to stay within the Gemini free-tier rate
+limit (~15 req/min). With in-process evals handling live traffic, the backlog is
+normally tiny, so the cap just protects the Action window on the rare large day.
+"""
 import os
+import time
+
 import httpx
 from supabase import create_client
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-QSTASH_TOKEN = os.environ["QSTASH_TOKEN"]
-API_URL = os.environ["API_URL"]
+API_URL = os.environ["API_URL"].rstrip("/")
+BACKFILL_LIMIT = int(os.environ.get("BACKFILL_LIMIT", "30"))
+THROTTLE_SECONDS = float(os.environ.get("BACKFILL_THROTTLE_SECONDS", "4"))
 
 
 def main():
@@ -44,20 +57,26 @@ def main():
 
     print(f"Found {len(unevaluated)} unevaluated responses")
 
-    enqueued = 0
-    for response_id in unevaluated:
-        try:
-            httpx.post(
-                f"https://qstash.upstash.io/v2/publish/{API_URL}/v1/eval/run",
-                headers={"Authorization": f"Bearer {QSTASH_TOKEN}"},
-                json={"response_id": response_id},
-                timeout=5.0,
-            )
-            enqueued += 1
-        except Exception as e:
-            print(f"Failed to enqueue {response_id}: {e}")
+    batch = unevaluated[:BACKFILL_LIMIT]
+    if len(unevaluated) > BACKFILL_LIMIT:
+        print(f"Capping to {BACKFILL_LIMIT} this run; remainder catches up next run")
 
-    print(f"Enqueued {enqueued} evals")
+    evaluated = 0
+    for i, response_id in enumerate(batch):
+        try:
+            r = httpx.post(
+                f"{API_URL}/v1/eval/run",
+                json={"response_id": response_id},
+                timeout=40.0,
+            )
+            r.raise_for_status()
+            evaluated += 1
+        except Exception as e:
+            print(f"Failed to evaluate {response_id}: {e}")
+        if i < len(batch) - 1:
+            time.sleep(THROTTLE_SECONDS)
+
+    print(f"Evaluated {evaluated}/{len(batch)} responses")
 
 
 if __name__ == "__main__":
