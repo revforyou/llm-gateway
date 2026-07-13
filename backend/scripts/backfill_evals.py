@@ -11,6 +11,7 @@ normally tiny, so the cap just protects the Action window on the rare large day.
 """
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from supabase import create_client
@@ -36,10 +37,14 @@ def main():
         unevaluated = []
 
     if not unevaluated:
+        # PostgREST filter values are literals, not SQL — compute cutoffs in Python.
+        now = datetime.now(timezone.utc)
+        since_24h = (now - timedelta(hours=24)).isoformat()
+        since_25h = (now - timedelta(hours=25)).isoformat()
         responses = (
             db.table("responses")
             .select("id")
-            .gte("created_at", "now() - interval '24 hours'")
+            .gte("created_at", since_24h)
             .execute()
         ).data or []
 
@@ -48,7 +53,7 @@ def main():
             for r in (
                 db.table("eval_scores")
                 .select("response_id")
-                .gte("created_at", "now() - interval '25 hours'")
+                .gte("created_at", since_25h)
                 .execute()
             ).data or []
         )

@@ -25,11 +25,13 @@ async def verify_api_key_dep(
         db.table("api_keys")
         .select("id, team_id, key_hash, revoked_at")
         .eq("key_prefix", prefix)
-        .single()
+        .maybe_single()
         .execute()
     )
 
-    if not result.data:
+    # maybe_single() returns no data (instead of raising) when the prefix isn't
+    # found, so an unknown/malformed key yields a clean 401 rather than a 500.
+    if not result or not result.data:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
     row = result.data

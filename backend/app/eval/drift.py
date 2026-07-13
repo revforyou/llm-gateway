@@ -1,4 +1,6 @@
 """Drift detection: compares last-1-hour metrics against 7-day rolling baseline."""
+from datetime import datetime, timedelta, timezone
+
 import httpx
 from app.core.db import get_db
 from app.core.config import settings
@@ -14,13 +16,19 @@ async def run_drift_check() -> None:
 
 
 async def _check_team(db, team_id: str) -> None:
+    # PostgREST filter values are literals, not SQL — "now() - interval ..." is
+    # rejected as an invalid timestamp. Compute the window bounds in Python.
+    now = datetime.now(timezone.utc)
+    seven_days_ago = (now - timedelta(days=7)).isoformat()
+    one_hour_ago = (now - timedelta(hours=1)).isoformat()
+
     # 7-day baseline quality
     baseline_rows = (
         db.table("eval_scores")
         .select("quality_score")
         .eq("team_id", team_id)
-        .gte("created_at", "now() - interval '7 days'")
-        .lte("created_at", "now() - interval '1 hour'")
+        .gte("created_at", seven_days_ago)
+        .lte("created_at", one_hour_ago)
         .execute()
     ).data or []
 
@@ -34,7 +42,7 @@ async def _check_team(db, team_id: str) -> None:
         db.table("eval_scores")
         .select("quality_score")
         .eq("team_id", team_id)
-        .gte("created_at", "now() - interval '1 hour'")
+        .gte("created_at", one_hour_ago)
         .execute()
     ).data or []
 

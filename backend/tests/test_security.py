@@ -47,3 +47,42 @@ def test_hmac_verify_wrong_secret():
     payload = '{"response_id": "abc123"}'
     sig = hmac_sign("secret-a", payload)
     assert hmac_verify("secret-b", payload, sig) is False
+
+
+async def test_unknown_api_key_returns_401_not_500(monkeypatch):
+    """An unknown key prefix must yield a clean 401, not a 500 from .single()
+    raising on 0 rows. Regression test for the auth maybe_single() fix."""
+    import app.core.auth as auth_mod
+    from fastapi import HTTPException
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    class _FakeRedis:
+        def get(self, _k):
+            return None
+
+    class _FakeQuery:
+        def select(self, *a):
+            return self
+
+        def eq(self, *a):
+            return self
+
+        def maybe_single(self):
+            return self
+
+        def execute(self):
+            class _R:
+                data = None
+            return _R()
+
+    class _FakeDB:
+        def table(self, *a):
+            return _FakeQuery()
+
+    monkeypatch.setattr(auth_mod, "get_redis", lambda: _FakeRedis())
+    monkeypatch.setattr(auth_mod, "get_db", lambda: _FakeDB())
+
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="sk_live_doesnotexist")
+    with pytest.raises(HTTPException) as exc_info:
+        await auth_mod.verify_api_key_dep(creds)
+    assert exc_info.value.status_code == 401

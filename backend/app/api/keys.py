@@ -67,10 +67,10 @@ async def revoke_key(key_id: str, auth: dict = Depends(verify_api_key_dep)) -> A
         db.table("api_keys")
         .select("id, team_id")
         .eq("id", key_id)
-        .single()
+        .maybe_single()
         .execute()
     )
-    if not result.data or result.data["team_id"] != auth["team_id"]:
+    if not result or not result.data or result.data["team_id"] != auth["team_id"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Key not found")
     db.table("api_keys").update({"revoked_at": "now()"}).eq("id", key_id).execute()
     log_audit(auth["team_id"], auth["key_id"], "revoke_key", f"api_keys/{key_id}")

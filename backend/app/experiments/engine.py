@@ -51,13 +51,14 @@ def apply_to_request(team_id: str, request_key: str) -> tuple[str, dict] | None:
 def recompute_stats(experiment_id: str) -> dict | None:
     db = get_db()
 
-    exp = (
+    resp = (
         db.table("experiments")
         .select("*")
         .eq("id", experiment_id)
-        .single()
+        .maybe_single()
         .execute()
-    ).data
+    )
+    exp = resp.data if resp else None
     if not exp or exp["status"] != "running":
         return None
 

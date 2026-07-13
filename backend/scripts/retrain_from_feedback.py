@@ -16,7 +16,7 @@ Usage (called by GitHub Actions weekly):
 """
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import joblib
@@ -86,12 +86,15 @@ def load_feedback_corrections(db) -> tuple[list[str], list[str]]:
     Returns (texts, corrected_labels) for requests where routing was wrong.
     """
     # Join requests + eval_scores for last 7 days
-    # Only look at high-confidence eval scores so we trust the quality signal
+    # Only look at high-confidence eval scores so we trust the quality signal.
+    # PostgREST filter values are literals, so compute the cutoff in Python
+    # rather than passing "now() - interval '7 days'" (rejected as a timestamp).
+    seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     rows = (
         db.table("eval_scores")
         .select("response_id, quality_score, judge_confidence, flags")
         .eq("judge_confidence", "high")
-        .gte("created_at", "now() - interval '7 days'")
+        .gte("created_at", seven_days_ago)
         .execute()
     ).data or []
 
