@@ -27,6 +27,13 @@ dependencies = [
     "sentry-sdk[fastapi]>=2.0",
     "structlog>=24.0",
     "groq>=0.9",
+    # Agentic eval reflection loop (judge -> conditional critic -> aggregate).
+    # Verified compatible with the pinned scikit-learn/numpy/scipy above —
+    # none of these three pull in numpy/scipy, so the classifier.pkl load path
+    # is unaffected.
+    "langgraph>=1.2,<2.0",
+    "langchain-core>=1.4,<2.0",
+    "langchain-google-genai>=4.2,<5.0",
 ]
 
 [project.optional-dependencies]
