@@ -2,9 +2,10 @@ name: ci-backend
 
 on:
   push:
-    paths: ["backend/**"]
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
   pull_request:
-    paths: ["backend/**"]
+    paths: ["backend/**", ".github/workflows/ci-backend.yml"]
+  workflow_dispatch:
 
 jobs:
   test:
@@ -21,7 +22,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install fastapi uvicorn pydantic pydantic-settings supabase httpx redis "scikit-learn==1.4.2" "scipy==1.13.1" "numpy==1.26.4" "joblib==1.4.2" bcrypt tenacity python-jose sentry-sdk structlog groq google-generativeai pytest pytest-asyncio
+        # Install from pyproject.toml (dev extras) rather than a hand-maintained
+        # package list — the manual list silently drifts from the real deps
+        # (e.g. langgraph/langchain were added to pyproject but not here, which
+        # broke test collection). This matches what the Dockerfile installs.
+        run: pip install ".[dev]"
 
       - name: Tests
         # conftest.py sets all required env vars — no real secrets needed for unit tests
