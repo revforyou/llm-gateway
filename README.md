@@ -15,38 +15,11 @@ Most teams send every prompt to the same model. This gateway classifies each req
 
 ## Architecture
 
-```
-Client Request
-      │
-      ▼
-┌─────────────────────────────────────────────────┐
-│               FastAPI Gateway (Render)           │
-│                                                 │
-│  1. Auth: bcrypt API key verify (Redis-cached)  │
-│  2. Rate limit: token bucket (Upstash Redis)    │
-│  3. Classify: TF-IDF + LogReg complexity model  │
-│  4. Route: simple → 8B │ medium/complex → 70B  │
-│  5. Call: Groq Llama 3.1/3.3                   │
-│  6. Log: Supabase (requests + responses)        │
-│  7. Enqueue: QStash async eval job              │
-└─────────────────────────────────────────────────┘
-      │                          │
-      ▼                          ▼
-  Response                 QStash Queue
-  (< 500ms added             │
-   overhead)                 ▼
-                    ┌──────────────────┐
-                    │  Eval Pipeline   │
-                    │                  │
-                    │  Gemini Flash    │
-                    │  ├ quality score │
-                    │  ├ hallucination │
-                    │  ├ refusal flag  │
-                    │  └ toxicity flag │
-                    │                  │
-                    │  → Supabase      │
-                    └──────────────────┘
-```
+![System design of the LLM Quality Gateway](docs/architecture.svg)
+
+**Request path:** clients (and the GitHub Actions traffic engine) hit the FastAPI gateway on Render — auth (bcrypt, Redis-cached) → rate limit → TF-IDF/LogReg complexity classifier → router → Groq Llama 3.1 8B (simple) or 3.3 70B (medium/complex) → persist to Supabase. The response returns with under 500ms of gateway overhead.
+
+**Evaluation path (off the critical path):** after the response is returned, an in-process `asyncio` background task scores a sampled fraction of responses. 20% run through an **AI agent** — a LangGraph reflection loop (`judge → conditional critic → aggregate`) on Gemini 2.5 Flash-Lite — while the rest use a single-shot judge; grounding uses Gemini embeddings. Scores land in `eval_scores`, which the stats engine (Welch's t-test, drift baselines) and the dashboard read via row-level security.
 
 ---
 
@@ -73,16 +46,30 @@ Result: ~40% cost reduction vs. always routing to 70B.
 
 ### 2. Async Eval Pipeline (No Added Latency)
 
-The eval pipeline runs entirely off the critical path:
+The eval pipeline runs entirely off the critical path — **in-process**, with no external queue:
 
 1. Response returns to client immediately
-2. `asyncio.create_task()` fires a QStash publish (non-blocking, 5s timeout)
-3. QStash delivers to `/v1/eval/run` with retry logic
+2. `asyncio.create_task()` fires a fire-and-forget background evaluation
+3. A sampled fraction (`EVAL_SAMPLE_RATE`, default 85%) is scored; the rest are skipped
 4. Gemini 2.5 Flash-Lite scores: `quality = 0.5×accuracy + 0.3×helpfulness + 0.2×tone`
-5. Flags hallucinations, refusals, and toxicity in parallel via `asyncio.gather()`
-6. Writes to `eval_scores` table in Supabase
+5. Flags hallucinations (embedding-based grounding), refusals, and toxicity
+6. Writes to the `eval_scores` table in Supabase
 
-85% of requests are sampled for eval (configurable). A nightly backfill job catches any that failed.
+A daily backfill job (`POST /v1/eval/run`) re-scores any responses missed if the gateway restarted mid-eval.
+
+> **Design note:** this started as a QStash-backed queue with signed callbacks. On a single-instance free-tier deploy the queue added an external dependency with no real benefit over an in-process background task — so it was removed. See the [Tradeoffs](#tradeoffs) section.
+
+### 2a. Agentic Evaluation (LangGraph reflection loop)
+
+20% of sampled evals (`AGENTIC_EVAL_SAMPLE_RATE`) run through an **AI agent** instead of the single-shot judge — a LangGraph `StateGraph` implementing the reflection pattern:
+
+```
+judge ──▶ (conditional edge) ──▶ critic ──▶ aggregate
+                │
+                └── judge confident? ──────▶ aggregate
+```
+
+The judge scores the response and reports its own confidence; a **conditional edge** invokes an independent **critic** only on low-confidence or low-accuracy cases, and the critic can override before the score is aggregated. Control flow is driven by the model's output, not a fixed script. Agentic rows are tagged `evaluator_model = gemini-2.5-flash-lite+langgraph-reflection` so the critic-override rate is queryable.
 
 ### 3. A/B Experimentation Engine
 
@@ -209,6 +196,19 @@ POST /v1/keys                         # Create new API key
 All responses: `{"data": {...}, "error": null}` or `{"data": null, "error": {"code":"...","message":"..."}}`
 
 ---
+
+## Tradeoffs
+
+Every decision here was a deliberate choice with a cost. The interesting ones:
+
+| Decision | Why | Tradeoff accepted |
+|---|---|---|
+| **In-process eval vs external queue (QStash)** | On a single-instance free-tier deploy, a managed queue added an external dependency and a failure mode (it silently 404'd for a month) with no real benefit over an `asyncio` background task. | If the process restarts mid-eval, that eval is lost — mitigated by the daily backfill job rather than the queue's built-in retries. |
+| **Rule + ML classifier vs an LLM classifier** | A TF-IDF + LogReg model classifies complexity in microseconds with no API call, so routing adds ~no latency and no quota cost. | Lower ceiling than an LLM classifier on nuanced prompts; mitigated by a rule-based fast path and a fail-open fallback. |
+| **AI agent: reflection loop vs autonomous tool-use** | The eval task is bounded and has a hard latency budget and a 15 req/min Gemini free-tier ceiling. A fixed `judge → conditional critic → aggregate` graph gives self-correction without an open-ended loop that multiplies LLM calls. | Not a general tool-using agent — deliberately scoped. The critic only runs on low-confidence cases (~cost control), so borderline-but-confident errors can slip through. |
+| **Groq free tier vs Anthropic Messages API** | The project must run at $0/month forever; Groq's free tier is the most generous. The gateway is provider-agnostic (`llm_client` abstraction), so swapping in the Anthropic Messages API is a config change. | Groq's models are less capable than frontier models; fine for the customer-support eval domain this is calibrated on. |
+| **Attributed cost vs actual cost** | Free-tier usage is metered to $0, but a cost-savings story needs real prices — so cost is *attributed* at published developer-tier rates. | The dashboard's dollar figures are modeled, not billed; labeled as such. |
+| **GitHub Actions cron vs a real scheduler** | Free and requires no extra infra. | GitHub throttles free-tier schedules hard — `*/5` actually fires every ~2h. Fine for keeping the DB alive (7-day idle limit); a Better Stack uptime ping covers true always-warm. |
 
 ## What I'd Add With More Time
 

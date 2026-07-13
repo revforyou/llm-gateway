@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="900" height="1160" viewBox="0 0 900 1160" role="img" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace">
+<title>LLM Quality Gateway full system design</title>
+<desc>Detailed topology: clients, DNS and a Render load balancer reach a FastAPI gateway exposing REST endpoints; a classifier/router control plane and an LLM client data plane call Groq models; state lives in Upstash Redis and a Supabase Postgres cluster; an in-process LangGraph AI agent evaluates responses with Gemini; analytics, observability, cron and alerts sit around the edges.</desc>
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#84add9"/></marker>
+<style>
+.b{fill:#163a4e;stroke:#5f8aa4;stroke-width:1}
+.p{stroke:#a78bfa}.t2{stroke:#2dd4bf}.a{stroke:#fbbf24}.c{stroke:#fb923c}.bl{stroke:#60a5fa}
+.buk{fill:none;stroke:#52809a;stroke-width:1;stroke-dasharray:5 4}
+.t{fill:#eaf1f7;font-size:13px;font-weight:600;text-anchor:middle}
+.s{fill:#a2bfcf;font-size:10.5px;text-anchor:middle}
+.h{fill:#c2dae8;font-size:11.5px;font-weight:700;letter-spacing:.03em}
+.l{fill:#b7d0df;font-size:10.5px}
+.ln{stroke:#84add9;stroke-width:1.4;fill:none}
+.lnd{stroke:#6f97ad;stroke-width:1.2;fill:none;stroke-dasharray:4 3}
+.e{fill:#84add9;font-size:9.5px;font-style:italic;text-anchor:middle}
+</style>
+</defs>
+<rect x="1" y="1" width="898" height="1158" rx="16" fill="#0f2a3a"/>
+<text x="28" y="40" class="h" font-size="18">LLM Quality Gateway — System Design</text>
+<text x="28" y="60" class="l" font-size="11">complexity-routed inference · in-process AI-agent evaluation · multi-tenant · free-tier $0/mo</text>
+
+<rect class="buk a" x="28" y="86" width="168" height="200" rx="9"/><text x="112" y="106" class="h" text-anchor="middle">CI/CD &amp; Cron</text><text x="112" y="121" class="s">GitHub Actions</text>
+<text x="40" y="144" class="l">· ci-backend / frontend</text><text x="40" y="163" class="l">· keep-warm */5</text><text x="40" y="182" class="l">· traffic-engine */30</text><text x="40" y="201" class="l">· backfill-eval</text><text x="40" y="220" class="l">· drift-monitor</text><text x="40" y="239" class="l">· retrain-classifier</text><text x="40" y="262" class="l" font-style="italic" fill="#f0a860">cron throttled ~2h*</text>
+<rect class="buk" x="28" y="300" width="168" height="66" rx="9"/><text x="112" y="320" class="h" text-anchor="middle">Observability</text><text x="40" y="340" class="l">Sentry · errors</text><text x="40" y="358" class="l">Better Stack · uptime</text>
+<rect class="buk c" x="28" y="380" width="168" height="56" rx="9"/><text x="112" y="400" class="h" text-anchor="middle">Alert service</text><text x="112" y="420" class="s">drift webhook · HMAC</text>
+<rect class="buk" x="28" y="450" width="168" height="70" rx="9"/><text x="112" y="470" class="h" text-anchor="middle">Security</text><text x="40" y="490" class="l">bcrypt keys · RLS</text><text x="40" y="508" class="l">Pydantic · CORS · env</text>
+<path class="lnd" d="M196 185 L214 185 L214 320 L232 320" marker-end="url(#ah)"/><text x="232" y="176" class="e" text-anchor="start">keep-warm · POST /chat</text>
+
+<rect class="b" x="232" y="92" width="118" height="38" rx="6"/><text x="291" y="115" class="t">DNS</text>
+<rect class="b bl" x="392" y="88" width="160" height="46" rx="6"/><text x="472" y="108" class="t">API Clients</text><text x="472" y="123" class="s">Bearer sk_live_…</text>
+<rect class="b bl" x="612" y="88" width="200" height="46" rx="6"/><text x="712" y="108" class="t">Dashboard / demo</text><text x="712" y="123" class="s">Next.js · Vercel · SWR</text>
+<line class="ln" x1="350" y1="111" x2="392" y2="111" marker-end="url(#ah)"/>
+
+<rect class="b" x="392" y="176" width="160" height="42" rx="6"/><text x="472" y="197" class="t">Load Balancer</text><text x="472" y="211" class="s">Render</text>
+<line class="ln" x1="472" y1="134" x2="472" y2="176" marker-end="url(#ah)"/>
+
+<rect class="buk bl" x="232" y="250" width="372" height="192" rx="10"/><text x="244" y="270" class="h">FastAPI Gateway · Render (Docker)</text>
+<rect class="b" x="244" y="282" width="170" height="34" rx="5"/><text x="329" y="303" class="t" font-size="11.5">Auth · bcrypt+Redis</text>
+<rect class="b" x="424" y="282" width="168" height="34" rx="5"/><text x="508" y="303" class="t" font-size="11.5">Rate limit · bucket</text>
+<rect class="b" x="244" y="324" width="170" height="34" rx="5"/><text x="329" y="345" class="t" font-size="11.5">Cost calc · pricing</text>
+<rect class="b" x="424" y="324" width="168" height="34" rx="5"/><text x="508" y="345" class="t" font-size="11.5">Audit log · RLS</text>
+<rect class="b" x="244" y="366" width="170" height="34" rx="5"/><text x="329" y="387" class="t" font-size="11.5">Pydantic · 32KB cap</text>
+<rect class="b" x="424" y="366" width="168" height="34" rx="5"/><text x="508" y="387" class="t" font-size="11.5">HMAC webhooks</text>
+<line class="ln" x1="472" y1="218" x2="472" y2="250" marker-end="url(#ah)"/>
+
+<rect class="buk" x="624" y="250" width="248" height="192" rx="10"/><text x="636" y="270" class="h">HTTP API — use cases</text>
+<text x="636" y="292" class="l">POST /v1/chat — route+infer</text><text x="636" y="312" class="l">POST /v1/eval/run — backfill</text><text x="636" y="332" class="l">GET /v1/metrics/* — dashboard</text><text x="636" y="352" class="l">/v1/experiments — A/B test</text><text x="636" y="372" class="l">/v1/keys — key CRUD</text><text x="636" y="392" class="l">/health · /v1/internal/*</text><text x="636" y="412" class="l">/v1/responses — explorer</text>
+<line class="ln" x1="604" y1="300" x2="624" y2="300" marker-end="url(#ah)"/><text x="614" y="292" class="e">exposes</text>
+
+<rect class="b t2" x="232" y="478" width="248" height="62" rx="6"/><text x="356" y="502" class="t">Classifier + Router</text><text x="356" y="518" class="s">TF-IDF+LogReg · rules → tier</text>
+<rect class="b bl" x="512" y="478" width="150" height="62" rx="6"/><text x="587" y="502" class="t">LLM client</text><text x="587" y="518" class="s">multi · tenacity</text>
+<rect class="buk p" x="690" y="466" width="182" height="86" rx="9"/><text x="781" y="484" class="h" text-anchor="middle">Groq · inference</text>
+<rect class="b p" x="700" y="492" width="162" height="24" rx="5"/><text x="781" y="509" class="t" font-size="10.5">Llama 3.1 8B — simple</text>
+<rect class="b p" x="700" y="520" width="162" height="24" rx="5"/><text x="781" y="537" class="t" font-size="10.5">Llama 3.3 70B — med/complex</text>
+<path class="ln" d="M418 442 L418 462 L356 462 L356 478" marker-end="url(#ah)"/><text x="330" y="458" class="e">control</text>
+<path class="ln" d="M418 442 L418 462 L587 462 L587 478" marker-end="url(#ah)"/><text x="610" y="458" class="e">data</text>
+<line class="ln" x1="662" y1="510" x2="690" y2="510" marker-end="url(#ah)"/><text x="676" y="503" class="e">call</text>
+
+<rect class="b a" x="232" y="588" width="248" height="52" rx="24"/><text x="356" y="610" class="t">Upstash Redis</text><text x="356" y="626" class="s">auth cache · rate buckets · clf cache</text>
+<line class="ln" x1="356" y1="540" x2="356" y2="588" marker-end="url(#ah)"/><text x="356" y="562" class="e">cache</text>
+
+<rect class="buk t2" x="512" y="600" width="360" height="150" rx="10"/><text x="692" y="620" class="h" text-anchor="middle">Supabase Postgres · RLS</text>
+<g stroke="#60a5fa" fill="#163a4e"><ellipse cx="562" cy="640" rx="36" ry="7"/><path d="M526 640v42a36 7 0 0 0 72 0v-42"/></g><text x="562" y="668" class="t" font-size="10">requests</text>
+<g stroke="#60a5fa" fill="#163a4e"><ellipse cx="672" cy="640" rx="36" ry="7"/><path d="M636 640v42a36 7 0 0 0 72 0v-42"/></g><text x="672" y="668" class="t" font-size="10">responses</text>
+<g stroke="#60a5fa" fill="#163a4e"><ellipse cx="784" cy="640" rx="38" ry="7"/><path d="M746 640v42a38 7 0 0 0 76 0v-42"/></g><text x="784" y="668" class="t" font-size="9.5">eval_scores</text>
+<text x="692" y="712" class="s" font-size="9.5">10 tables · teams · api_keys · experiments · assignments · drift_events · audit_log · tickets_seed</text>
+<line class="ln" x1="587" y1="540" x2="587" y2="600" marker-end="url(#ah)"/><text x="587" y="572" class="e">INSERT</text>
+
+<rect class="buk c" x="232" y="792" width="640" height="196" rx="10"/><text x="244" y="812" class="h">AI agent · in-process async eval  (asyncio · off critical path · 85% sampled)</text>
+<rect class="buk c" x="244" y="826" width="392" height="112" rx="9"/><text x="256" y="845" class="h" font-size="10.5">AI agent — LangGraph reflection loop · LangChain</text>
+<rect class="b c" x="256" y="858" width="112" height="42" rx="6"/><text x="312" y="878" class="t" font-size="11">judge</text><text x="312" y="892" class="s" font-size="9">score+conf</text>
+<rect class="b c" x="400" y="858" width="120" height="42" rx="6"/><text x="460" y="878" class="t" font-size="11">critic</text><text x="460" y="892" class="s" font-size="9">if low-conf</text>
+<rect class="b c" x="552" y="858" width="72" height="42" rx="6"/><text x="588" y="875" class="t" font-size="9.5">aggregate</text><text x="588" y="889" class="s" font-size="8.5">score</text>
+<line class="ln" x1="368" y1="879" x2="400" y2="879" marker-end="url(#ah)"/><line class="ln" x1="520" y1="879" x2="552" y2="879" marker-end="url(#ah)"/>
+<text x="256" y="922" class="l" font-size="9.5">Gemini decides → critic path (conditional edge)</text>
+<rect class="b" x="652" y="826" width="208" height="30" rx="5"/><text x="756" y="845" class="t" font-size="10.5">Classic judge · single-shot 80%</text>
+<rect class="b bl" x="652" y="862" width="208" height="30" rx="5"/><text x="756" y="881" class="t" font-size="10.5">grounding · refusal · toxicity</text>
+<rect class="b p" x="652" y="898" width="208" height="30" rx="5"/><text x="756" y="917" class="t" font-size="10">Gemini 2.5 Flash-Lite · embeddings</text>
+<line class="ln" x1="640" y1="770" x2="640" y2="792" marker-end="url(#ah)"/><text x="640" y="784" class="e">create_task</text>
+<line class="ln" x1="540" y1="792" x2="540" y2="770" marker-end="url(#ah)"/><text x="540" y="786" class="e">eval_scores</text>
+
+<rect class="b t2" x="232" y="1018" width="320" height="60" rx="6"/><text x="392" y="1042" class="t">Analytics engine</text><text x="392" y="1058" class="s">Welch t-test · drift baseline · retrain</text>
+<path class="lnd" d="M512 700 L214 700 L214 1048 L232 1048" marker-end="url(#ah)"/><text x="224" y="900" class="e" text-anchor="start" transform="rotate(90 224 900)">read (RLS)</text>
+<path class="lnd" d="M872 660 L886 660 L886 111 L812 111" marker-end="url(#ah)"/><text x="892" y="400" class="e" transform="rotate(90 892 400)">dashboard reads (RLS)</text>
+
+<text x="28" y="1118" class="l" font-size="10">Stack: Groq (Llama 3.1/3.3) · Gemini 2.5 Flash-Lite + embeddings · LangGraph/LangChain · FastAPI · Supabase Postgres · Upstash Redis · Next.js · Render · Vercel · GitHub Actions · Sentry · Better Stack</text>
+</svg>
